@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>今天吃什麼？淡江周邊美食決策輪盤</title>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #1e293b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
+    header { text-align: center; margin-bottom: 24px; }
+    header h1 { font-size: 1.8rem; margin-bottom: 8px; color: #0f172a; }
+    header p { color: #64748b; font-size: 0.95rem; }
+    
+    .main-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 32px; width: 100%; max-width: 960px; }
+    
+    /* 輪盤區域 */
+    .wheel-box { position: relative; width: 340px; height: 340px; display: flex; justify-content: center; align-items: center; }
+    canvas#wheel { width: 340px; height: 340px; border-radius: 50%; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1); }
+    .pointer {
+      position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+      width: 0; height: 0;
+      border-left: 16px solid transparent;
+      border-right: 16px solid transparent;
+      border-top: 28px solid #ef4444;
+      z-index: 10;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+    }
+    .center-pin {
+      position: absolute; width: 50px; height: 50px; background: white; border-radius: 50%;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center;
+      font-weight: bold; color: var(--primary); font-size: 0.85rem; cursor: pointer; user-select: none; z-index: 5;
+    }
+
+    /* 控制面板 */
+    .control-panel { background: var(--card); border-radius: 16px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); flex: 1; min-width: 300px; max-width: 420px; display: flex; flex-direction: column; gap: 16px; }
+    .btn-spin {
+      background: var(--primary); color: white; border: none; border-radius: 12px; padding: 14px;
+      font-size: 1.1rem; font-weight: 600; cursor: pointer; transition: background 0.2s, transform 0.1s;
+    }
+    .btn-spin:hover { background: var(--primary-hover); }
+    .btn-spin:active { transform: scale(0.98); }
+    .btn-spin:disabled { background: #94a3b8; cursor: not-allowed; }
+
+    .input-group { display: flex; gap: 8px; }
+    .input-group input { flex: 1; padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.95rem; outline: none; }
+    .input-group input:focus { border-color: var(--primary); }
+    .input-group button { background: #e2e8f0; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    .input-group button:hover { background: #cbd5e1; }
+
+    .tags-container { display: flex; flex-wrap: wrap; gap: 8px; max-height: 180px; overflow-y: auto; padding: 4px; }
+    .tag { background: #f1f5f9; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; }
+    .tag button { background: transparent; border: none; color: #94a3b8; cursor: pointer; font-size: 1rem; line-height: 1; }
+    .tag button:hover { color: #ef4444; }
+
+    .btn-reset { background: transparent; border: 1px dashed #cbd5e1; color: #64748b; padding: 8px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; }
+    .btn-reset:hover { background: #f8fafc; color: #0f172a; }
+
+    /* 結果彈窗 */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none;
+      align-items: center; justify-content: center; z-index: 100;
+    }
+    .modal-content {
+      background: white; padding: 32px; border-radius: 20px; text-align: center;
+      max-width: 320px; width: 90%; transform: scale(0.8); transition: transform 0.2s;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-overlay.active .modal-content { transform: scale(1); }
+    .modal-content h3 { color: #64748b; font-size: 0.95rem; margin-bottom: 8px; }
+    .modal-content .winner { font-size: 1.8rem; font-weight: bold; color: var(--primary); margin-bottom: 20px; }
+    .modal-content button { background: var(--primary); color: white; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+
+    /* 彩帶 Canvas */
+    canvas#confetti { position: fixed; inset: 0; pointer-events: none; z-index: 90; width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>今天吃什麼？淡江美食輪盤</h1>
+    <p>擺脫選擇困難！點擊旋轉，讓機率決定今天的美味</p>
+  </header>
+
+  <div class="main-container">
+    <!-- 輪盤主體 -->
+    <div class="wheel-box">
+      <div class="pointer"></div>
+      <canvas id="wheel" width="680" height="680"></canvas>
+      <div class="center-pin" id="centerSpin">GO</div>
+    </div>
+
+    <!-- 項目控制區 -->
+    <div class="control-panel">
+      <button class="btn-spin" id="spinBtn">立即隨機抽出！</button>
+      
+      <div class="input-group">
+        <input type="text" id="itemInput" placeholder="新增自訂餐廳/餐點..." maxlength="12">
+        <button id="addBtn">新增</button>
+      </div>
+
+      <div class="tags-container" id="tagsList"></div>
+      <button class="btn-reset" id="resetBtn">恢復淡江精選預設清單</button>
+    </div>
+  </div>
+
+  <!-- 結果彈窗 -->
+  <div class="modal-overlay" id="resultModal">
+    <div class="modal-content">
+      <h3>今日命運欽定</h3>
+      <div class="winner" id="winnerText">--</div>
+      <button id="closeModal">欣然接受！</button>
+    </div>
+  </div>
+
+  <!-- 彩帶特效畫布 -->
+  <canvas id="confetti"></canvas>
+
+  <script>
+    // 預設淡江周邊清單
+    const DEFAULT_ITEMS = ["大學城滷味", "大田寮排骨便當", "水源街炒飯", "麥當勞", "香豆富麻辣豆腐", "八方雲集", "小木屋鬆餅", "梁社漢排骨"];
+    const COLORS = ["#f87171", "#fb923c", "#fbbf24", "#34d399", "#38bdf8", "#818cf8", "#a78bfa", "#f472b6"];
+
+    let items = JSON.parse(localStorage.getItem('tamkang_food_items')) || [...DEFAULT_ITEMS];
+    let startAngle = 0;
+    let isSpinning = false;
+    let audioCtx = null;
+
+    const canvas = document.getElementById('wheel');
+    const ctx = canvas.getContext('2d');
+    const spinBtn = document.getElementById('spinBtn');
+    const centerSpin = document.getElementById('centerSpin');
+    const itemInput = document.getElementById('itemInput');
+    const addBtn = document.getElementById('addBtn');
+    const tagsList = document.getElementById('tagsList');
+    const resetBtn = document.getElementById('resetBtn');
+    const resultModal = document.getElementById('resultModal');
+    const winnerText = document.getElementById('winnerText');
+    const closeModal = document.getElementById('closeModal');
+
+    // Web Audio 音效產生器 (免外部檔案)
+    function initAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    function playTick() {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.05);
+    }
+    function playWinSound() {
+      if (!audioCtx) return;
+      const notes = [523.25, 659.25, 783.99, 1046.50];
+      notes.forEach((freq, idx) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime + idx * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + idx * 0.08 + 0.3);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(audioCtx.currentTime + idx * 0.08);
+        osc.stop(audioCtx.currentTime + idx * 0.08 + 0.3);
+      });
+    }
+
+    // 繪製輪盤
+    function drawWheel() {
+      const numOptions = items.length;
+      const arc = (2 * Math.PI) / numOptions;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      const r = canvas.width / 2 - 20;
+
+      for (let i = 0; i < numOptions; i++) {
+        const angle = startAngle + i * arc;
+        ctx.fillStyle = COLORS[i % COLORS.length];
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, angle, angle + arc, false);
+        ctx.lineTo(cx, cy);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        // 繪製文字
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 26px sans-serif';
+        ctx.translate(cx + Math.cos(angle + arc / 2) * (r * 0.65), cy + Math.sin(angle + arc / 2) * (r * 0.65));
+        ctx.rotate(angle + arc / 2 + Math.PI / 2);
+        const text = items[i];
+        ctx.fillText(text, -ctx.measureText(text).width / 2, 0);
+        ctx.restore();
+      }
+    }
+
+    // 更新標籤介面
+    function renderTags() {
+      tagsList.innerHTML = '';
+      items.forEach((item, index) => {
+        const tag = document.createElement('div');
+        tag.className = 'tag';
+        tag.innerHTML = `<span>${item}</span><button onclick="removeItem(${index})">&times;</button>`;
+        tagsList.appendChild(tag);
+      });
+      localStorage.setItem('tamkang_food_items', JSON.stringify(items));
+      drawWheel();
+    }
+
+    window.removeItem = function(index) {
+      if (items.length <= 2) {
+        alert("至少要保留 2 個選項才能抽籤！");
+        return;
+      }
+      items.splice(index, 1);
+      renderTags();
+    };
+
+    function addItem() {
+      const val = itemInput.value.trim();
+      if (!val) return;
+      if (items.includes(val)) {
+        alert("這項美食已經在清單內了！");
+        return;
+      }
+      items.push(val);
+      itemInput.value = '';
+      renderTags();
+    }
+
+    addBtn.addEventListener('click', addItem);
+    itemInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addItem(); });
+    resetBtn.addEventListener('click', () => {
+      items = [...DEFAULT_ITEMS];
+      renderTags();
+    });
+
+    // 旋轉邏輯
+    let lastTickAngle = 0;
+    function spin() {
+      if (isSpinning) return;
+      initAudio();
+      isSpinning = true;
+      spinBtn.disabled = true;
+
+      const spinAngleTotal = Math.PI * 2 * (5 + Math.random() * 5); // 隨機轉 5~10 圈
+      const duration = 4000; // 4秒
+      const startTime = performance.now();
+      const initialAngle = startAngle;
+
+      function animate(time) {
+        const elapsed = time - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Ease-out cubic 減速曲線
+        const easeOut = 1 - Math.pow(1 - progress, 3);
+        startAngle = initialAngle + spinAngleTotal * easeOut;
+
+        // 計算音效撥動觸發
+        const arc = (2 * Math.PI) / items.length;
+        if (Math.floor(startAngle / arc) !== Math.floor(lastTickAngle / arc)) {
+          playTick();
+          lastTickAngle = startAngle;
+        }
+
+        drawWheel();
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          isSpinning = false;
+          spinBtn.disabled = false;
+          determineWinner();
+        }
+      }
+      requestAnimationFrame(animate);
+    }
+
+    function determineWinner() {
+      const numOptions = items.length;
+      const arc = (2 * Math.PI) / numOptions;
+      // 指針位於頂部 (3 * Math.PI / 2)
+      let normalizedAngle = (3 * Math.PI / 2 - (startAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      const winnerIndex = Math.floor(normalizedAngle / arc);
+      const winner = items[winnerIndex];
+
+      winnerText.textContent = winner;
+      resultModal.classList.add('active');
+      playWinSound();
+      launchConfetti();
+    }
+
+    spinBtn.addEventListener('click', spin);
+    centerSpin.addEventListener('click', spin);
+    closeModal.addEventListener('click', () => { resultModal.classList.remove('active'); });
+
+    // 彩帶特效
+    const confCanvas = document.getElementById('confetti');
+    const confCtx = confCanvas.getContext('2d');
+    let particles = [];
+
+    function launchConfetti() {
+      confCanvas.width = window.innerWidth;
+      confCanvas.height = window.innerHeight;
+      particles = Array.from({ length: 90 }, () => ({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+        vx: (Math.random() - 0.5) * 16,
+        vy: (Math.random() - 0.7) * 18,
+        size: Math.random() * 8 + 4,
+        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+        rotation: Math.random() * 360,
+        vr: (Math.random() - 0.5) * 10
+      }));
+      animateConfetti();
+    }
+
+    function animateConfetti() {
+      confCtx.clearRect(0, 0, confCanvas.width, confCanvas.height);
+      particles.forEach((p) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.35; // 重力
+        p.rotation += p.vr;
+        confCtx.save();
+        confCtx.translate(p.x, p.y);
+        confCtx.rotate((p.rotation * Math.PI) / 180);
+        confCtx.fillStyle = p.color;
+        confCtx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+        confCtx.restore();
+      });
+      particles = particles.filter(p => p.y < window.innerHeight);
+      if (particles.length > 0) requestAnimationFrame(animateConfetti);
+    }
+
+    // 初始化
+    renderTags();
+  </script>
+</body>
+</html>
